@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>wgxdp</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon-192.png">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <button id="back-btn" class="back-btn hidden" aria-label="Back">&larr;</button>
+    <h1>wgxdp</h1>
+  </header>
+  <main>
+    <peers-list class="view active"></peers-list>
+    <peer-detail class="view"></peer-detail>
+  </main>
+  <toast-notification></toast-notification>
+
+  <script src="api.js"></script>
+  <script src="components/toast-notification.js"></script>
+  <script src="components/peers-list.js"></script>
+  <script src="components/peer-detail.js"></script>
+  <script>
+    const peersList = document.querySelector('peers-list');
+    const peerDetail = document.querySelector('peer-detail');
+    const backBtn = document.getElementById('back-btn');
+
+    function showList() {
+      peerDetail.classList.remove('active');
+      peersList.classList.add('active');
+      backBtn.classList.add('hidden');
+      peersList.load();
+    }
+
+    function showDetail(peer) {
+      peersList.classList.remove('active');
+      peerDetail.classList.add('active');
+      backBtn.classList.remove('hidden');
+      peerDetail.setPeer(peer);
+    }
+
+    peersList.addEventListener('peer-selected', e => showDetail(e.detail));
+    peerDetail.addEventListener('navigate-back', showList);
+    peerDetail.addEventListener('peer-deleted', showList);
+    backBtn.addEventListener('click', showList);
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>

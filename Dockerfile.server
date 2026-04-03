@@ -1,0 +1,14 @@
+FROM registry.gitlab.com/openxchange/base-images/wolfi/go:1.26-dev AS builder
+
+RUN apk add --no-cache gcc glibc-dev
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go generate ./internal/... && CGO_ENABLED=1 go build -o wgxdp-server ./cmd/wgxdp-server
+
+FROM registry.gitlab.com/openxchange/base-images/wolfi/static:latest
+COPY --from=builder /app/wgxdp-server /usr/local/bin/
+EXPOSE 8337
+ENTRYPOINT ["wgxdp-server"]

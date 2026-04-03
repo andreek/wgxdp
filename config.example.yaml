@@ -1,0 +1,40 @@
+# wgxdp Server Configuration
+
+# VPN network name
+name: "my-vpn"
+
+# Public URL of the wgxdp API server (used for device verification URIs)
+server_url: "http://192.168.1.1:8337"
+
+# WireGuard endpoint that clients will connect to (public IP/hostname + listen port)
+wg_endpoint: "vpn.example.com:5820"
+
+# Subnet for the WireGuard overlay network (server allocates IPs from .2 upward)
+wg_subnet: "10.200.0.0/24"
+
+# Server's own IP within the WireGuard subnet (always .1)
+wg_interface_ip: "10.200.0.1"
+
+# Name of the WireGuard network interface
+wg_interface_name: "wg0"
+
+# UDP port WireGuard listens on
+wg_listen_port: 5820
+
+# Header set by your OAuth2 proxy containing the authenticated user identity
+# Common values: X-Forwarded-User, X-Auth-Request-Email, Remote-User
+# Default: X-Forwarded-User
+auth_header: "X-Forwarded-User"
+
+# Address the HTTP server listens on
+# Default: 127.0.0.1:8337 (loopback only — requires a reverse proxy in front)
+# Set to 0.0.0.0:8337 only if you understand the auth header spoofing risk
+# listen_addr: "127.0.0.1:8337"
+
+# Path to the WireGuard private key file
+# Default: /var/lib/wgxdp/wgkey
+# wg_key_file: "/var/lib/wgxdp/wgkey"
+
+# Path to the SQLite database file
+# Default: /var/lib/wgxdp/wgxdp.db
+# db_path: "/var/lib/wgxdp/wgxdp.db"
