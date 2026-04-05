@@ -41,5 +41,27 @@ const api = {
     const res = await fetch(`${API_BASE}/server-info`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
+  },
+
+  async verifyDeviceCode(code) {
+    const res = await fetch(`${API_BASE}/device/verify?code=${encodeURIComponent(code)}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(body.message || 'Invalid or expired code.');
+    }
+    return res.json();
+  },
+
+  async deviceVerifyAction(userCode, action) {
+    const res = await fetch(`${API_BASE}/device/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_code: userCode, action })
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.message || 'Action failed.');
+    return body;
   }
 };

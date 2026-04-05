@@ -8,49 +8,93 @@
   <link rel="icon" href="/icon-192.png">
   <link rel="apple-touch-icon" href="/icon-192.png">
   <meta name="theme-color" content="#ffffff">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header>
-    <button id="back-btn" class="back-btn hidden" aria-label="Back">&larr;</button>
-    <h1>wgxdp</h1>
+    <button id="back-btn" class="back-btn" aria-label="Back">&larr;</button>
+    <h1><a id="home-link" href="/">wgxdp</a></h1>
   </header>
   <main>
     <peers-list class="view active"></peers-list>
     <peer-detail class="view"></peer-detail>
+    <device-approve class="view"></device-approve>
   </main>
   <toast-notification></toast-notification>
 
-  <script src="api.js"></script>
-  <script src="components/toast-notification.js"></script>
-  <script src="components/peers-list.js"></script>
-  <script src="components/peer-detail.js"></script>
+  <script src="/api.js"></script>
+  <script src="/components/toast-notification.js"></script>
+  <script src="/components/peers-list.js"></script>
+  <script src="/components/peer-detail.js"></script>
+  <script src="/components/device-approve.js"></script>
   <script>
     const peersList = document.querySelector('peers-list');
     const peerDetail = document.querySelector('peer-detail');
+    const deviceApprove = document.querySelector('device-approve');
     const backBtn = document.getElementById('back-btn');
 
-    function showList() {
-      peerDetail.classList.remove('active');
-      peersList.classList.add('active');
-      backBtn.classList.add('hidden');
-      peersList.load();
-    }
-
-    function showDetail(peer) {
+    function hideAll() {
       peersList.classList.remove('active');
-      peerDetail.classList.add('active');
-      backBtn.classList.remove('hidden');
-      peerDetail.setPeer(peer);
+      peerDetail.classList.remove('active');
+      deviceApprove.classList.remove('active');
     }
 
-    peersList.addEventListener('peer-selected', e => showDetail(e.detail));
-    peerDetail.addEventListener('navigate-back', showList);
-    peerDetail.addEventListener('peer-deleted', showList);
-    backBtn.addEventListener('click', showList);
+    // Client-side router: updates the browser URL and activates the matching
+    // view without a full page reload. Uses the History API so the browser's
+    // back/forward buttons work. replace=true avoids adding a history entry
+    // (used for redirects like "peer not found" or after deleting a peer).
+    function navigate(path, { replace = false } = {}) {
+      if (replace) history.replaceState(null, '', path);
+      else history.pushState(null, '', path);
+      route();
+    }
+
+    function route() {
+      const path = location.pathname;
+      const params = new URLSearchParams(location.search);
+      hideAll();
+
+      if (path.startsWith('/peers/')) {
+        const name = decodeURIComponent(path.split('/')[2]);
+        backBtn.classList.add('visible');
+        peerDetail.classList.add('active');
+        peerDetail.showLoading();
+        api.fetchPeers().then(peers => {
+          const peer = (peers || []).find(p => p.name === name);
+          if (peer) peerDetail.setPeer(peer);
+          else navigate('/', { replace: true });
+        }).catch(() => navigate('/', { replace: true }));
+
+      } else if (path === '/device/verify') {
+        backBtn.classList.add('visible');
+        deviceApprove.classList.add('active');
+        deviceApprove.setCode(params.get('code') || '');
+
+      } else {
+        backBtn.classList.remove('visible');
+        peersList.classList.add('active');
+        peersList.load();
+      }
+    }
+
+    window.addEventListener('popstate', route);
+
+    peersList.addEventListener('peer-selected', e => {
+      navigate(`/peers/${encodeURIComponent(e.detail.name)}`);
+    });
+    peerDetail.addEventListener('navigate-back', () => navigate('/'));
+    peerDetail.addEventListener('peer-deleted', () => navigate('/', { replace: true }));
+    deviceApprove.addEventListener('navigate-back', () => navigate('/'));
+    backBtn.addEventListener('click', () => history.back());
+    document.getElementById('home-link').addEventListener('click', e => {
+      e.preventDefault();
+      navigate('/');
+    });
+
+    route();
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js');
+      navigator.serviceWorker.register('/sw.js');
     }
   </script>
 </body>

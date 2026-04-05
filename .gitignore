@@ -4,3 +4,4 @@ vm
 oldvm
 ebpf.bak
 *.sql
+internal/web

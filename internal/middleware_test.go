@@ -81,7 +81,8 @@ func TestRequireAuthProtectedRoutes(t *testing.T) {
 	mux.HandleFunc("GET /rules", s.requireAuth(s.ListRules))
 	mux.HandleFunc("POST /rules", s.requireAuth(s.CreateRule))
 	mux.HandleFunc("DELETE /rules/{id}", s.requireAuth(s.DeleteRule))
-	mux.HandleFunc("/device/verify", s.requireAuth(s.DeviceVerifyHandler))
+	mux.HandleFunc("GET /device/verify", s.requireAuth(s.DeviceVerifyGet))
+	mux.HandleFunc("POST /device/verify", s.requireAuth(s.deviceVerifyPost))
 	mux.Handle("/", s.requireAuthHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})))

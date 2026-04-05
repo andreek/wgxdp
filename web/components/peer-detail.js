@@ -17,6 +17,11 @@ class PeerDetail extends HTMLElement {
     this.customOpen = false;
   }
 
+  showLoading() {
+    this.peer = null;
+    this.shadowRoot.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:48px">Loading...</p>';
+  }
+
   setPeer(peer) {
     this.peer = peer;
     this.customOpen = false;

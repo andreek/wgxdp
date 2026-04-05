@@ -43,6 +43,13 @@ header h1 {
   font-weight: 600;
 }
 
+header h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+header h1 a:hover { opacity: 0.7; }
+
 header {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -54,6 +61,7 @@ header {
 
 
 .back-btn {
+  display: none;
   background: transparent;
   color: var(--text);
   border: none;
@@ -65,7 +73,10 @@ header {
 }
 
 .back-btn:hover { background: var(--surface-hover); }
-.back-btn.hidden { display: none; }
+
+@media (max-width: 640px) {
+  .back-btn.visible { display: block; }
+}
 
 main {
   max-width: 960px;

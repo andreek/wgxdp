@@ -38,6 +38,7 @@ Optional: `--name my-laptop` to request a specific peer name (otherwise auto-gen
 Features:
 - **Peers list** - card grid showing all peers with name, IP (green when active via WireGuard handshake), and public key. Click a peer to drill into its detail view
 - **Peer detail** - peer info, outbound/inbound firewall rules with resolved peer names, quick-add buttons for common services (DNS, HTTP, HTTPS, SSH), and a collapsible custom rule form
+- **Device approval** - approve or deny new device join requests directly in the PWA, with the device code pre-filled when following the CLI link
 - **Live status** - peer online/offline indicator based on WireGuard last handshake time
 - **Light/dark mode** - automatic via `prefers-color-scheme`, neutral color palette
 - Toast notifications, confirm dialogs, responsive layout
@@ -54,7 +55,7 @@ Features:
 | `POST` | `/rules` | Create a firewall rule |
 | `DELETE` | `/rules/{id}` | Delete a firewall rule |
 | `GET` | `/server-info` | Server WireGuard IP (for PWA) |
-| `GET/POST` | `/device/verify` | Browser-facing approval page |
+| `GET/POST` | `/device/verify` | Device approval (JSON for PWA, redirects browser to PWA) |
 
 ### Public routes (client device flow)
 
@@ -228,9 +229,8 @@ internal/
   handlers_rules.go     Firewall rule CRUD + eBPF map sync
   handlers_device.go    OAuth2 device authorization flow
   middleware.go         Auth header validation
-  templates.go          Device verification HTML
 web/                    PWA
-  components/           peers-list, peer-detail, toast-notification
+  components/           peers-list, peer-detail, device-approve, toast-notification
 wireguard/              WireGuard device management via wgctrl/netlink
 ```
 

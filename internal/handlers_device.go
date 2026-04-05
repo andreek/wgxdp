@@ -3,9 +3,9 @@ package wgxdp
 import (
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -29,6 +29,27 @@ type DeviceTokenResponse struct {
 	AccessToken string `json:"access_token,omitempty"`
 	TokenType   string `json:"token_type,omitempty"`
 	Error       string `json:"error,omitempty"`
+}
+
+// DeviceVerifyInfo is the JSON response from GET /device/verify when
+// the client sends Accept: application/json.
+type DeviceVerifyInfo struct {
+	UserCode  string `json:"user_code"`
+	Status    string `json:"status"`
+	ExpiresAt int64  `json:"expires_at"`
+}
+
+// DeviceVerifyRequest is the JSON body for POST /device/verify.
+type DeviceVerifyRequest struct {
+	UserCode string `json:"user_code"`
+	Action   string `json:"action"`
+}
+
+// DeviceVerifyResult is the JSON response from POST /device/verify.
+type DeviceVerifyResult struct {
+	OK      bool   `json:"ok"`
+	Title   string `json:"title"`
+	Message string `json:"message"`
 }
 
 // DeviceCodeHandler handles POST /device/code. It creates a new device
@@ -118,84 +139,108 @@ func (s *Server) DeviceTokenHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-// DeviceVerifyHandler handles GET and POST /device/verify. It renders the
-// browser-facing approval form and processes approve/deny actions.
-func (s *Server) DeviceVerifyHandler(w http.ResponseWriter, req *http.Request) {
-	switch req.Method {
-	case http.MethodGet:
-		s.deviceVerifyGet(w, req)
-	case http.MethodPost:
-		s.deviceVerifyPost(w, req)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-	}
-}
+// DeviceVerifyGet handles GET /device/verify. If the request accepts JSON,
+// it returns device code info. Otherwise it serves the PWA shell so the
+// client-side router can handle the view.
+func (s *Server) DeviceVerifyGet(w http.ResponseWriter, req *http.Request) {
+	code := req.URL.Query().Get("code")
 
-func (s *Server) deviceVerifyGet(w http.ResponseWriter, req *http.Request) {
-	code := html.EscapeString(req.URL.Query().Get("code"))
+	// JSON response for PWA fetch calls
+	if strings.Contains(req.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+
+		if code == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(DeviceVerifyResult{Title: "Error", Message: "No code provided."})
+			return
+		}
+
+		dc, err := s.DB.GetDeviceCodeByUserCode(code)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(DeviceVerifyResult{Title: "Error", Message: "Server error."})
+			return
+		}
+
+		if dc == nil || dc.ExpiresAt < time.Now().Unix() {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(DeviceVerifyResult{Title: "Error", Message: "Invalid or expired code."})
+			return
+		}
+
+		json.NewEncoder(w).Encode(DeviceVerifyInfo{
+			UserCode:  dc.UserCode,
+			Status:    dc.Status,
+			ExpiresAt: dc.ExpiresAt,
+		})
+		return
+	}
+
+	// Browser navigation: serve the PWA shell for client-side routing
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, verifyFormHTML, code)
+	w.Write(s.indexHTML)
 }
 
 func (s *Server) deviceVerifyPost(w http.ResponseWriter, req *http.Request) {
-	err := req.ParseForm()
-	if err != nil {
-		http.Error(w, "could not parse form", http.StatusBadRequest)
+	var dvr DeviceVerifyRequest
+	if err := json.NewDecoder(req.Body).Decode(&dvr); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(DeviceVerifyResult{Title: "Error", Message: "Invalid request body."})
 		return
 	}
 
-	userCode := req.FormValue("user_code")
-	action := req.FormValue("action")
+	w.Header().Set("Content-Type", "application/json")
 
-	if userCode == "" {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, verifyResultHTML("Error", "No user code provided."))
+	if dvr.UserCode == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(DeviceVerifyResult{Title: "Error", Message: "No user code provided."})
 		return
 	}
 
-	dc, err := s.DB.GetDeviceCodeByUserCode(userCode)
+	dc, err := s.DB.GetDeviceCodeByUserCode(dvr.UserCode)
 	if err != nil {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, verifyResultHTML("Error", "Server error."))
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(DeviceVerifyResult{Title: "Error", Message: "Server error."})
 		return
 	}
 
 	if dc == nil || dc.ExpiresAt < time.Now().Unix() {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, verifyResultHTML("Error", "Invalid or expired code."))
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(DeviceVerifyResult{Title: "Error", Message: "Invalid or expired code."})
 		return
 	}
 
 	if dc.Status != "pending" {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, verifyResultHTML("Error", "This code has already been used."))
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(DeviceVerifyResult{Title: "Error", Message: "This code has already been used."})
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
 	actingUser := s.getAuthUser(req)
 
-	switch action {
+	switch dvr.Action {
 	case "approve":
-		_, err := s.DB.ApproveDeviceCode(userCode, actingUser)
+		_, err := s.DB.ApproveDeviceCode(dvr.UserCode, actingUser)
 		if err != nil {
-			fmt.Fprint(w, verifyResultHTML("Error", "Could not approve device."))
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(DeviceVerifyResult{Title: "Error", Message: "Could not approve device."})
 			return
 		}
 		msg := "The device has been authorized to join the network."
 		if actingUser != "" {
 			msg += fmt.Sprintf(" Approved by %s.", actingUser)
 		}
-		fmt.Fprint(w, verifyResultHTML("Approved", msg))
+		json.NewEncoder(w).Encode(DeviceVerifyResult{OK: true, Title: "Approved", Message: msg})
 	case "deny":
-		s.DB.DenyDeviceCode(userCode, actingUser)
+		s.DB.DenyDeviceCode(dvr.UserCode, actingUser)
 		msg := "The device request has been denied."
 		if actingUser != "" {
 			msg += fmt.Sprintf(" Denied by %s.", actingUser)
 		}
-		fmt.Fprint(w, verifyResultHTML("Denied", msg))
+		json.NewEncoder(w).Encode(DeviceVerifyResult{OK: true, Title: "Denied", Message: msg})
 	default:
-		fmt.Fprint(w, verifyResultHTML("Error", "Invalid action."))
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(DeviceVerifyResult{Title: "Error", Message: "Invalid action."})
 	}
 }

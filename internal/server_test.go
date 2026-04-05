@@ -20,5 +20,6 @@ func testServer(t *testing.T) *Server {
 			WGSubnet:   "10.200.0.0/24",
 			WGEndpoint: "home.example.com:5820",
 		},
+		indexHTML: []byte("<!DOCTYPE html><html><body>wgxdp</body></html>"),
 	}
 }

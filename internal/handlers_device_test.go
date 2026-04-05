@@ -39,28 +39,40 @@ func TestDeviceFlowFull(t *testing.T) {
 		t.Fatalf("DeviceTokenHandler (pending): expected status %d, got %d", http.StatusTooManyRequests, w.Code)
 	}
 
-	// Step 3: Verify page GET
+	// Step 3: Verify page GET (JSON)
 	req = httptest.NewRequest(http.MethodGet, "/device/verify?code="+dcResp.UserCode, nil)
+	req.Header.Set("Accept", "application/json")
 	w = httptest.NewRecorder()
-	s.DeviceVerifyHandler(w, req)
+	s.DeviceVerifyGet(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("DeviceVerifyHandler GET: expected status %d, got %d", http.StatusOK, w.Code)
 	}
-	if !strings.Contains(w.Body.String(), dcResp.UserCode) {
-		t.Fatal("verify page should contain the user code")
+	var verifyInfo DeviceVerifyInfo
+	if err := json.NewDecoder(w.Body).Decode(&verifyInfo); err != nil {
+		t.Fatalf("could not decode verify info: %v", err)
+	}
+	if verifyInfo.UserCode != dcResp.UserCode {
+		t.Fatalf("verify info user_code = %q, want %q", verifyInfo.UserCode, dcResp.UserCode)
+	}
+	if verifyInfo.Status != "pending" {
+		t.Fatalf("verify info status = %q, want pending", verifyInfo.Status)
 	}
 
-	// Step 4: Approve
-	formBody := "user_code=" + dcResp.UserCode + "&action=approve"
-	req = httptest.NewRequest(http.MethodPost, "/device/verify", strings.NewReader(formBody))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// Step 4: Approve (JSON)
+	approveBody := `{"user_code":"` + dcResp.UserCode + `","action":"approve"}`
+	req = httptest.NewRequest(http.MethodPost, "/device/verify", strings.NewReader(approveBody))
+	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
-	s.DeviceVerifyHandler(w, req)
+	s.deviceVerifyPost(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("DeviceVerifyHandler POST approve: expected status %d, got %d", http.StatusOK, w.Code)
 	}
-	if !strings.Contains(w.Body.String(), "Approved") {
-		t.Fatal("approve response should contain 'Approved'")
+	var result DeviceVerifyResult
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("could not decode verify result: %v", err)
+	}
+	if result.Title != "Approved" {
+		t.Fatalf("verify result title = %q, want Approved", result.Title)
 	}
 
 	// Step 5: Poll after approval (should get token)
@@ -132,14 +144,16 @@ func TestDeviceFlowDeny(t *testing.T) {
 	var dcResp DeviceCodeResponse
 	json.NewDecoder(w.Body).Decode(&dcResp)
 
-	// Deny
-	formBody := "user_code=" + dcResp.UserCode + "&action=deny"
-	req = httptest.NewRequest(http.MethodPost, "/device/verify", strings.NewReader(formBody))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// Deny (JSON)
+	denyBody := `{"user_code":"` + dcResp.UserCode + `","action":"deny"}`
+	req = httptest.NewRequest(http.MethodPost, "/device/verify", strings.NewReader(denyBody))
+	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
-	s.DeviceVerifyHandler(w, req)
-	if !strings.Contains(w.Body.String(), "Denied") {
-		t.Fatal("deny response should contain 'Denied'")
+	s.deviceVerifyPost(w, req)
+	var result DeviceVerifyResult
+	json.NewDecoder(w.Body).Decode(&result)
+	if result.Title != "Denied" {
+		t.Fatalf("verify result title = %q, want Denied", result.Title)
 	}
 
 	// Poll should return access_denied
@@ -175,24 +189,75 @@ func TestDeviceTokenHandlerExpired(t *testing.T) {
 
 func TestDeviceVerifyPostInvalidCode(t *testing.T) {
 	s := testServer(t)
-	formBody := "user_code=INVALID&action=approve"
-	req := httptest.NewRequest(http.MethodPost, "/device/verify", strings.NewReader(formBody))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	body := `{"user_code":"INVALID","action":"approve"}`
+	req := httptest.NewRequest(http.MethodPost, "/device/verify", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	s.DeviceVerifyHandler(w, req)
-	if !strings.Contains(w.Body.String(), "Invalid or expired") {
-		t.Fatalf("expected error message for invalid code, got: %s", w.Body.String())
+	s.deviceVerifyPost(w, req)
+	var result DeviceVerifyResult
+	json.NewDecoder(w.Body).Decode(&result)
+	if result.Message != "Invalid or expired code." {
+		t.Fatalf("expected error message for invalid code, got: %s", result.Message)
 	}
 }
 
 func TestDeviceVerifyPostEmptyCode(t *testing.T) {
 	s := testServer(t)
-	formBody := "user_code=&action=approve"
-	req := httptest.NewRequest(http.MethodPost, "/device/verify", strings.NewReader(formBody))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	body := `{"user_code":"","action":"approve"}`
+	req := httptest.NewRequest(http.MethodPost, "/device/verify", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	s.DeviceVerifyHandler(w, req)
-	if !strings.Contains(w.Body.String(), "No user code") {
-		t.Fatalf("expected error for empty code, got: %s", w.Body.String())
+	s.deviceVerifyPost(w, req)
+	var result DeviceVerifyResult
+	json.NewDecoder(w.Body).Decode(&result)
+	if result.Message != "No user code provided." {
+		t.Fatalf("expected error for empty code, got: %s", result.Message)
+	}
+}
+
+func TestDeviceVerifyGetServesSPA(t *testing.T) {
+	s := testServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/device/verify?code=ABCD-EFGH", nil)
+	req.Header.Set("Accept", "text/html")
+	w := httptest.NewRecorder()
+	s.DeviceVerifyGet(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected %d, got %d", http.StatusOK, w.Code)
+	}
+	ct := w.Header().Get("Content-Type")
+	if ct != "text/html; charset=utf-8" {
+		t.Fatalf("expected text/html content type, got %s", ct)
+	}
+	if !strings.Contains(w.Body.String(), "wgxdp") {
+		t.Fatal("expected SPA HTML in response body")
+	}
+}
+
+func TestDeviceVerifyGetJSON(t *testing.T) {
+	s := testServer(t)
+
+	// Create a device code first
+	req := httptest.NewRequest(http.MethodPost, "/device/code", nil)
+	req.Host = "localhost:8337"
+	w := httptest.NewRecorder()
+	s.DeviceCodeHandler(w, req)
+	var dcResp DeviceCodeResponse
+	json.NewDecoder(w.Body).Decode(&dcResp)
+
+	// GET with JSON accept
+	req = httptest.NewRequest(http.MethodGet, "/device/verify?code="+dcResp.UserCode, nil)
+	req.Header.Set("Accept", "application/json")
+	w = httptest.NewRecorder()
+	s.DeviceVerifyGet(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected %d, got %d", http.StatusOK, w.Code)
+	}
+	var info DeviceVerifyInfo
+	json.NewDecoder(w.Body).Decode(&info)
+	if info.UserCode != dcResp.UserCode {
+		t.Fatalf("user_code = %q, want %q", info.UserCode, dcResp.UserCode)
+	}
+	if info.Status != "pending" {
+		t.Fatalf("status = %q, want pending", info.Status)
 	}
 }

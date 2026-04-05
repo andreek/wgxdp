@@ -1,4 +1,4 @@
-const CACHE = 'wgxdp-v2';
+const CACHE = 'wgxdp-v101001';
 const SHELL = [
   '/',
   '/icon-192.png',
@@ -8,6 +8,7 @@ const SHELL = [
   '/components/toast-notification.js',
   '/components/peers-list.js',
   '/components/peer-detail.js',
+  '/components/device-approve.js',
   '/manifest.json'
 ];
 
@@ -28,18 +29,24 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
+  // SPA: all navigation requests get the cached index.html
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      caches.match('/').then(r => r || fetch('/'))
+    );
+    return;
+  }
+
   // Network-first for API calls
-  if (url.pathname.startsWith('/peers') || url.pathname.startsWith('/rules')) {
+  if (url.pathname.startsWith('/peers') || url.pathname.startsWith('/rules') || url.pathname.startsWith('/device/') || url.pathname === '/server-info') {
     e.respondWith(
       fetch(e.request).catch(() => caches.match(e.request))
     );
     return;
   }
 
-  // Cache-first for app shell
-  if (url.pathname.startsWith('/')) {
-    e.respondWith(
-      caches.match(e.request).then(r => r || fetch(e.request))
-    );
-  }
+  // Cache-first for app shell assets
+  e.respondWith(
+    caches.match(e.request).then(r => r || fetch(e.request))
+  );
 });
