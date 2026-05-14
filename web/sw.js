@@ -1,4 +1,4 @@
-const CACHE = 'wgxdp-v101001';
+const CACHE = 'wgxdp-v101002';
 const SHELL = [
   '/',
   '/icon-192.png',

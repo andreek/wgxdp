@@ -26,6 +26,15 @@ wg_listen_port: 5820
 # Default: X-Forwarded-User
 auth_header: "X-Forwarded-User"
 
+# URL the PWA navigates to when the OAuth2 proxy session is lost (401 with no
+# auth header). The literal "{path}" is replaced with the URL-encoded original
+# request URI so the proxy can return the user there after re-auth.
+# If unset, the PWA falls back to reloading the current URL.
+# Examples:
+#   oauth2-proxy: "/oauth2/start?rd={path}"
+#   Authelia:     "/?rd={path}"
+# auth_redirect_url: "/oauth2/start?rd={path}"
+
 # Address the HTTP server listens on
 # Default: 127.0.0.1:8337 (loopback only — requires a reverse proxy in front)
 # Set to 0.0.0.0:8337 only if you understand the auth header spoofing risk

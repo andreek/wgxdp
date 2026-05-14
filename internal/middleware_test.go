@@ -1,11 +1,27 @@
 package wgxdp
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+type sessionLostBody struct {
+	Error    string `json:"error"`
+	Message  string `json:"message"`
+	Redirect string `json:"redirect"`
+}
+
+func decodeSessionLost(t *testing.T, w *httptest.ResponseRecorder) sessionLostBody {
+	t.Helper()
+	var body sessionLostBody
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("expected JSON body, got %q: %v", w.Body.String(), err)
+	}
+	return body
+}
 
 func TestRequireAuthBlocksWithoutHeader(t *testing.T) {
 	s := testServer(t)
@@ -17,8 +33,18 @@ func TestRequireAuthBlocksWithoutHeader(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("expected %d, got %d", http.StatusUnauthorized, w.Code)
 	}
-	if !strings.Contains(w.Body.String(), "X-Forwarded-User") {
-		t.Errorf("expected error to mention header name, got: %s", w.Body.String())
+	if got := w.Header().Get("WWW-Authenticate"); got != "Session" {
+		t.Errorf("expected WWW-Authenticate: Session, got %q", got)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("expected JSON Content-Type, got %q", ct)
+	}
+	body := decodeSessionLost(t, w)
+	if body.Error != "session_lost" {
+		t.Errorf("expected error=session_lost, got %q", body.Error)
+	}
+	if !strings.Contains(body.Message, "X-Forwarded-User") {
+		t.Errorf("expected message to mention header name, got: %s", body.Message)
 	}
 }
 
@@ -56,6 +82,37 @@ func TestRequireAuthCustomHeader(t *testing.T) {
 	protected(w, req)
 	if w.Code != http.StatusOK {
 		t.Errorf("expected %d with correct header, got %d", http.StatusOK, w.Code)
+	}
+}
+
+func TestRequireAuthRedirectURLRendered(t *testing.T) {
+	s := testServer(t)
+	s.Config.AuthRedirectURL = "/oauth2/start?rd={path}"
+	protected := s.requireAuth(s.ListPeers)
+
+	req := httptest.NewRequest(http.MethodGet, "/peers?foo=bar", nil)
+	w := httptest.NewRecorder()
+	protected(w, req)
+
+	body := decodeSessionLost(t, w)
+	want := "/oauth2/start?rd=" + "%2Fpeers%3Ffoo%3Dbar"
+	if body.Redirect != want {
+		t.Errorf("expected redirect %q, got %q", want, body.Redirect)
+	}
+}
+
+func TestRequireAuthNoRedirectWhenUnconfigured(t *testing.T) {
+	s := testServer(t)
+	s.Config.AuthRedirectURL = ""
+	protected := s.requireAuth(s.ListPeers)
+
+	req := httptest.NewRequest(http.MethodGet, "/peers", nil)
+	w := httptest.NewRecorder()
+	protected(w, req)
+
+	body := decodeSessionLost(t, w)
+	if body.Redirect != "" {
+		t.Errorf("expected empty redirect, got %q", body.Redirect)
 	}
 }
 

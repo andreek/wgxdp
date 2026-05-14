@@ -20,6 +20,7 @@ type Config struct {
 	WGInterfaceName string `yaml:"wg_interface_name"`
 	WGListenPort    int    `yaml:"wg_listen_port"`
 	AuthHeader      string `yaml:"auth_header"`
+	AuthRedirectURL string `yaml:"auth_redirect_url"`
 	ListenAddr      string `yaml:"listen_addr"`
 	WGKeyFile       string `yaml:"wg_key_file"`
 	DBPath          string `yaml:"db_path"`

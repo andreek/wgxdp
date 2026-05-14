@@ -14,7 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-//go:generate cp -r ../web ./web
+//go:generate sh -c "rm -rf web && cp -r ../web ./web"
 //go:embed web
 var webFS embed.FS
 
@@ -24,7 +24,7 @@ type Server struct {
 	Device    *wireguard.Device
 	Config    *config.Config
 	XDP       *firewall.Firewall
-	indexHTML  []byte
+	indexHTML []byte
 }
 
 // StartServer registers HTTP routes, starts background cleanup, and begins
