@@ -31,7 +31,9 @@ wgxdp join --server https://<your-server>
 
 The client generates a WireGuard key pair, requests authorization, and after approval prints a `wg-quick` compatible configuration file.
 
-Optional: `--name my-laptop` to request a specific peer name (otherwise auto-generated).
+Optional:
+- `--name my-laptop` to request a specific peer name (otherwise auto-generated).
+- `--qrcode` display qr code in the terminal.
 
 ### Web UI
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mdp/qrterminal/v3"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -51,6 +52,7 @@ func main() {
 	joinCmd := flag.NewFlagSet("join", flag.ExitOnError)
 	server := joinCmd.String("server", "", "wgxdp server URL (e.g. http://192.168.1.1:8337)")
 	name := joinCmd.String("name", "", "Requested peer name (optional, server will auto-generate if empty)")
+	qr := joinCmd.Bool("qrcode", false, "Generate qr code (optional)")
 
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "Usage: wgxdp <command>\n\nCommands:\n  join    Join a wgxdp network\n")
@@ -71,13 +73,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := runJoin(*server, *name); err != nil {
+	if err := runJoin(*server, *name, *qr); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func runJoin(serverURL, name string) error {
+func runJoin(serverURL, name string, qrCode bool) error {
 	// Step 1: Generate WireGuard key pair
 	privateKey, err := wgtypes.GeneratePrivateKey()
 	if err != nil {
@@ -165,19 +167,24 @@ func runJoin(serverURL, name string) error {
 	}
 
 	// Step 6: Print wg-quick config
+	wgConfig := "[Interface]\n"
+	wgConfig += fmt.Sprintf("PrivateKey = %s\n", privateKey.String())
+	wgConfig += fmt.Sprintf("Address = %s\n\n", jr.AssignedIP+"/"+maskFromCIDR(jr.Subnet))
+	wgConfig += "[Peer]\n"
+	wgConfig += fmt.Sprintf("PublicKey = %s\n", jr.ServerPublicKey)
+	wgConfig += fmt.Sprintf("Endpoint = %s\n", jr.ServerEndpoint)
+	wgConfig += fmt.Sprintf("AllowedIPs = %s\n", jr.Subnet)
+	wgConfig += "PersistentKeepalive = 25"
+
 	fmt.Printf("\nSuccessfully joined as %q with IP %s\n\n", jr.PeerName, jr.AssignedIP)
 	fmt.Println("WireGuard configuration (save to /etc/wireguard/wgxdp.conf):")
 	fmt.Println("---")
-	fmt.Println("[Interface]")
-	fmt.Printf("PrivateKey = %s\n", privateKey.String())
-	fmt.Printf("Address = %s\n", jr.AssignedIP+"/"+maskFromCIDR(jr.Subnet))
-	fmt.Println()
-	fmt.Println("[Peer]")
-	fmt.Printf("PublicKey = %s\n", jr.ServerPublicKey)
-	fmt.Printf("Endpoint = %s\n", jr.ServerEndpoint)
-	fmt.Printf("AllowedIPs = %s\n", jr.Subnet)
-	fmt.Println("PersistentKeepalive = 25")
+	fmt.Println(wgConfig)
 	fmt.Println("---")
+
+	if qrCode {
+		qrterminal.GenerateHalfBlock(wgConfig, qrterminal.L, os.Stdout)
+	}
 
 	return nil
 }
